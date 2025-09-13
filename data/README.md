@@ -1,0 +1,1 @@
+Store raw essays (.docx) files here.
