@@ -1,8 +1,9 @@
 __pycache__
-/data/raw_essays/
-/data/courses_lectors.csv
+courses_lecturers.csv
 test.ipynb
 .env
 *.swp
 *.cfg
+*.docx
+*.doc
 /volumes
