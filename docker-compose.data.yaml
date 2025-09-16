@@ -1,6 +1,7 @@
 x-airflow-common:
   &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.0.6}
+  #image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.0.6}
+  build: .
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -14,7 +15,7 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://airflow-apiserver:8080/execution/"
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
     AIRFLOW_CONFIG: "/opt/airflow/config/airflow.cfg"
-    _PIP_ADDITIONAL_REQUIREMENTS: "python-docx"
+    #_PIP_ADDITIONAL_REQUIREMENTS: "python-docx"
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
