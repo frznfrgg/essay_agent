@@ -6,6 +6,7 @@ import docx
 from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.standard.operators.python import PythonOperator
+from dotenv import load_dotenv
 
 WATCH_DIR = "/opt/airflow/data/incoming"
 
@@ -13,7 +14,7 @@ WATCH_DIR = "/opt/airflow/data/incoming"
 def list_subfolder(**context):
     """Find subfolder passed by trigger"""
     conf = context["dag_run"].conf
-    subfolder = conf.get("subfolder")
+    subfolder = conf.get("subfolder")  # folder name represents the name of the group
     if not subfolder:
         raise ValueError('You must trigger DAG with {"subfolder": "GroupName"}')
     folder_path = os.path.join(WATCH_DIR, subfolder)
@@ -53,16 +54,62 @@ def parse_docs(**context):
 
 
 def insert_postgres(**context):
+    conf = context["dag_run"].conf
     students = context["ti"].xcom_pull(key="students", task_ids="parse_docs")
+    graduation_date = conf.get("graduation_date")
+    courses = conf.get("courses")
+    group_name = conf.get("subfolder")  # folder name represents the name of the group
 
-    pg_hook = PostgresHook(postgres_conn_id="postgres_default")
-    insert_sql = """
+    if not graduation_date:
+        raise ValueError('You must trigger DAG with {"graduation_date": "YYYY-MM-DD"}')
+    if not courses:
+        raise ValueError(
+            'You must trigger DAG with {"courses": ["Subject_name_1", "Subject_name_2", ...]}'
+        )
+
+    load_dotenv()
+    pg_hook = PostgresHook(
+        host="postgres",
+        schema=os.getenv("POSTGRES_MAIN_DB"),
+        login=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        port=5432,
+    )
+
+    insert_groups_sql = """
+        INSERT INTO groups (code, graduation_date)
+        VALUES (%s, %s)
+    """
+    insert_students_sql = """
         INSERT INTO students (group_code, first_name, last_name, essay_text)
         VALUES (%s, %s, %s, %s)
     """
-    for s in students:
+    placeholders = ", ".join(
+        ["%s"] * len(courses)
+    )  # creating placeholders list like [%s, %s, ...] to prevent sql injection
+    select_courses_ids_sql = f"SELECT id FROM courses WHERE name IN ({placeholders})"
+    insert_groups_courses_sql = """
+        INSERT INTO groups_courses(group_code, course_id) VALUES (%s, %s)
+        ON CONFLICT DO NOTHING;
+    """
+
+    pg_hook.run(insert_groups_sql, parameters=(students[0]["group"], graduation_date))
+    for student in students:
         pg_hook.run(
-            insert_sql, parameters=(s["group"], s["first"], s["last"], s["text"])
+            insert_students_sql,
+            parameters=(
+                student["group"],
+                student["first"],
+                student["last"],
+                student["text"],
+            ),
+        )
+
+    courses_ids = pg_hook.get_records(select_courses_ids_sql, parameters=courses)
+    for (course_id,) in courses_ids:
+        pg_hook.run(
+            insert_groups_courses_sql,
+            parameters=(group_name, course_id),
         )
 
 
